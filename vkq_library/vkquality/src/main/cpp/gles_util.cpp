@@ -20,11 +20,13 @@
 
 namespace vkquality {
 
-std::string GLESUtil::GetGLESVersionString() {
-  std::string result_string;
+void GLESUtil::GetGLESStrings(std::string& renderer, std::string& version, std::string& vendor) {
+  renderer = "";
+  version = "";
+  vendor = "";
   EGLDisplay egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
   if (!eglInitialize(egl_display, nullptr, nullptr)) {
-      return result_string;
+      return;
   }
 
   EGLConfig egl_config;
@@ -37,10 +39,14 @@ std::string GLESUtil::GetGLESVersionString() {
                                           EGL_NONE};
 
   EGLint config_count;
-  if (eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &config_count) != EGL_TRUE)
-    return result_string;
-  if (config_count != 1)
-    return result_string;
+  if (eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &config_count) != EGL_TRUE) {
+    eglTerminate(egl_display);
+    return;
+  }
+  if (config_count != 1) {
+    eglTerminate(egl_display);
+    return;
+  }
 
   EGLint surfaceType = 0;
   eglGetConfigAttrib(egl_display, egl_config, EGL_SURFACE_TYPE, &surfaceType);
@@ -61,27 +67,28 @@ std::string GLESUtil::GetGLESVersionString() {
   const EGLint eglError = eglGetError();
   if (eglError != EGL_SUCCESS)
   {
-    return result_string;
+    eglTerminate(egl_display);
+    return;
   }
   const EGLint context_attribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
   EGLContext egl_context = eglCreateContext(egl_display, egl_config, nullptr, context_attribs);
   if (eglError != EGL_SUCCESS)
   {
     eglDestroySurface(egl_display, egl_surface);
-    return result_string;
+    eglTerminate(egl_display);
+    return;
   }
 
   if (eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == EGL_TRUE) {
-    result_string = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-    eglTerminate(egl_display);
+    renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    vendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
   }
 
   eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   eglDestroyContext(egl_display, egl_context);
   eglDestroySurface(egl_display, egl_surface);
   eglTerminate(egl_display);
-
-  return result_string;
 }
 
 } // namespace vkquality
