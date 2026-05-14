@@ -71,6 +71,8 @@ class VkQualityManager {
   static std::string GetStaticStringField(JNIEnv *env, jclass clz,
                                           const char *name);
 
+  static int32_t GetVulkanDEQPLevel(JNIEnv *env);
+
   static vkQualityInitResult InitDeviceInfo(JNIEnv *env, DeviceInfo &device_info,
                                             const vkqGraphicsAPIInfo *api_info);
 

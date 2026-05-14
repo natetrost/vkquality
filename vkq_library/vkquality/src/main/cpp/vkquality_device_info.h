@@ -33,6 +33,7 @@ struct DeviceInfo {
   std::string gles_vendor;
   std::string gles_version;
   int32_t api_level = kWildcardValue;
+  int32_t vk_deqp_level = kWildcardValue;
   uint32_t vk_api_version = kWildcardValue;
   uint32_t vk_device_id = kWildcardValue;
   uint32_t vk_driver_version = kWildcardValue;
