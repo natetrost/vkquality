@@ -370,6 +370,15 @@ TEST(VkQualityFileParseSizeCheck, Validity)
   EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_TooSmall);
 }
 
+TEST(VkQualityFileParseLargeFileSizeCheck, Validity)
+{
+  VkQualityPredictionFile file;
+  MemoryBuffer memory_buffer(1024 * 1024 + 1); // 1 MB + 1 byte
+  const auto result = file.ParseFileData(memory_buffer.GetPtr(), memory_buffer.GetTotalSize(),
+                                         kValidVersion);
+  EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_TooSmall);
+}
+
 static constexpr uint32_t kOldVersion = 0x100;
 
 TEST(VkQualityFileParseIdentifierCheck, Validity)
