@@ -146,7 +146,7 @@ VkQualityPredictionFile::FileParseResult VkQualityPredictionFile::ValidateFile(
   const uint8_t *file_start = reinterpret_cast<const uint8_t *>(file_data);
   const uint32_t *string_offsets = reinterpret_cast<const uint32_t *>(
       (file_start + header->string_table_offset));
-  if (!CheckOffsetListValidity(string_offsets, header->device_list_count, file_size)) {
+  if (!CheckOffsetListValidity(string_offsets, header->string_table_count, file_size)) {
     file_parse_error_ = "Invalid file: String offset table entry overflows end of file";
     return kFileParseResult_Error_StringOffsetOverflow;
   }

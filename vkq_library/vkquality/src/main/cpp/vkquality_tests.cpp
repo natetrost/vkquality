@@ -576,12 +576,20 @@ TEST(VkQualityFileParseHeaderOffsetTables, Validity)
   uint32_t old_offset;
 
   uint32_t *string_offsets = reinterpret_cast<uint32_t *>((base + header->string_table_offset));
-  old_offset = *string_offsets;
-  *string_offsets = 0x7FFFFFFF;
+  old_offset = string_offsets[0];
+  string_offsets[0] = 0x7FFFFFFF;
   auto result = file.ParseFileData(memory_buffer.GetPtr(), memory_buffer.GetUsedSize(),
                                    kValidVersion);
   EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_StringOffsetOverflow);
-  *string_offsets = old_offset;
+  string_offsets[0] = old_offset;
+
+  // Corrupt a higher offset that would not be checked if device_list_count was used instead of string_table_count
+  old_offset = string_offsets[4];
+  string_offsets[4] = 0x7FFFFFFF;
+  result = file.ParseFileData(memory_buffer.GetPtr(), memory_buffer.GetUsedSize(),
+                               kValidVersion);
+  EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_StringOffsetOverflow);
+  string_offsets[4] = old_offset;
 }
 
 TEST(VkQualityStringComparison, Validity)
