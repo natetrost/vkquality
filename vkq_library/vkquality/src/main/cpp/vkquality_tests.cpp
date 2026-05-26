@@ -340,6 +340,24 @@ TEST(VkQualityPartialStringMatchTest, Validity)
   EXPECT_EQ(all_matched, true);
 }
 
+TEST(VkQualitySequentialWildcardTest, SequentialMatching) {
+  // Foo*bar*baz should match Foo bar baz
+  auto result = VkQualityMatching::StringMatches("Foo bar baz", "Foo*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_Substring);
+
+  // Foo*bar*baz should NOT match Foo baz bar
+  result = VkQualityMatching::StringMatches("Foo baz bar", "Foo*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_None);
+
+  // *bar*baz should match bar baz
+  result = VkQualityMatching::StringMatches("bar baz", "*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_Substring);
+
+  // *bar*baz should NOT match baz bar
+  result = VkQualityMatching::StringMatches("baz bar", "*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_None);
+}
+
 // VkQUalityPredictionFile ParseFileData tests
 static constexpr uint32_t kTooSmallBuffer[4] {0, 0, 0, 0};
 

@@ -31,7 +31,7 @@ public:
     kStringMatch_Substring
   };
 
-  static size_t CountWildcards(const char *str, size_t *string_length, size_t *offset_array);
+  static size_t CountWildcards(const std::string_view &str, size_t *string_length, size_t *offset_array);
 
   static StringMatchResult WildcardsMatch(
       const std::string_view &a, const std::string_view &b,
