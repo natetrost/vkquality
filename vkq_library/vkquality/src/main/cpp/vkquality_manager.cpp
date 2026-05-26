@@ -261,7 +261,7 @@ int32_t VkQualityManager::GetVulkanDEQPLevel(JNIEnv *env) {
 }
 
 vkQualityInitResult VkQualityManager::InitDeviceInfo(JNIEnv *env, DeviceInfo &device_info,
-    const vkqGraphicsAPIInfo *api_info) {
+    const vkqGraphicsAPIInfo *api_info, const int32_t flags) {
   jclass build_class = env->FindClass(kAndroidBuildClass);
   if (env->ExceptionCheck()) {
     env->ExceptionClear();
@@ -279,11 +279,13 @@ vkQualityInitResult VkQualityManager::InitDeviceInfo(JNIEnv *env, DeviceInfo &de
 
   device_info.vk_deqp_level = GetVulkanDEQPLevel(env);
 
-  if (api_info != nullptr && api_info->gles_version_string != nullptr) {
-    device_info.gles_version = api_info->gles_version_string;
-  } else {
-    GLESUtil::GetGLESStrings(device_info.gles_renderer, device_info.gles_version,
-                             device_info.gles_vendor);
+  if ((flags & kInitFlagSkipFingerprintRecommendationCheck) == 0) {
+    if (api_info != nullptr && api_info->gles_version_string != nullptr) {
+      device_info.gles_version = api_info->gles_version_string;
+    } else {
+      GLESUtil::GetGLESStrings(device_info.gles_renderer, device_info.gles_version,
+                               device_info.gles_vendor);
+    }
   }
 
   // SoC string will be empty if we can't retrieve it due to older Android version
@@ -419,7 +421,7 @@ vkQualityInitResult VkQualityManager::StartRecommendation() {
   }
 
   DeviceInfo device_info;
-  vkQualityInitResult result = InitDeviceInfo(env_, device_info, api_info_);
+  vkQualityInitResult result = InitDeviceInfo(env_, device_info, api_info_, flags_);
   if (result != kSuccess) {
     return result;
   }

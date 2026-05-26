@@ -74,7 +74,8 @@ class VkQualityManager {
   static int32_t GetVulkanDEQPLevel(JNIEnv *env);
 
   static vkQualityInitResult InitDeviceInfo(JNIEnv *env, DeviceInfo &device_info,
-                                            const vkqGraphicsAPIInfo *api_info);
+                                            const vkqGraphicsAPIInfo *api_info,
+                                            const int32_t flags);
 
   bool LoadCache(const DeviceInfo &device_info);
 
