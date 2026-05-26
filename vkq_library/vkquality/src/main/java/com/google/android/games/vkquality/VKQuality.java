@@ -63,7 +63,7 @@ public class VKQuality {
     public int StartVkQualityWithFlags(String customDataFilename, int flags)
     {
         mFlags = flags;
-        String dataFilename = customDataFilename.isEmpty() ?
+        String dataFilename = (customDataFilename == null || customDataFilename.isEmpty()) ?
                 DEFAULT_QUALITY_FILE : customDataFilename;
 
         if ((mFlags & INIT_FLAG_SKIP_STARTUP_MITIGATION) == 0)
