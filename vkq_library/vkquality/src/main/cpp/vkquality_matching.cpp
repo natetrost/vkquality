@@ -41,7 +41,7 @@ VkQualityMatching::StringMatchResult VkQualityMatching::WildcardsMatch(
     const size_t wildcard_count, const size_t wildcard_length,
     const size_t *wildcard_offsets) {
   std::vector<char> temp_string;
-  temp_string.reserve(wildcard_length + 1);
+  temp_string.resize(wildcard_length + 1);
   char *substring = temp_string.data();
 
   size_t current_index = 0;
