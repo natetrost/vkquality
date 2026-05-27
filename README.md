@@ -38,6 +38,12 @@ feedback will help refine the recommendation list.
 
 ## Version history
 
+* 1.2.4 - (05/27/2026) - Recommend Vulkan on unknown devices if they pass
+dEQP 3.2024 or later. Deprecate future Android Vulkan criteria.
+Disable fingerprint check by default unless user device
+info is provided, deprecate default fingerprint entries in quality file, improve
+data validation checks in quality file. Fix potential logic flaw in sequential
+wildcard matching. Minor bug fixes.
 * 1.2.3 - (12/03/2025) - Recommend Vulkan on unrecognized devices if ANGLE is
 the system GLES driver, fix redundant/missing eglTerminate in GLES utils.
 * 1.2.2 - (06/09/2025) - Updated device list with additional GPU recommendations

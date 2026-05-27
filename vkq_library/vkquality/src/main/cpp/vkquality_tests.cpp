@@ -340,6 +340,24 @@ TEST(VkQualityPartialStringMatchTest, Validity)
   EXPECT_EQ(all_matched, true);
 }
 
+TEST(VkQualitySequentialWildcardTest, SequentialMatching) {
+  // Foo*bar*baz should match Foo bar baz
+  auto result = VkQualityMatching::StringMatches("Foo bar baz", "Foo*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_Substring);
+
+  // Foo*bar*baz should NOT match Foo baz bar
+  result = VkQualityMatching::StringMatches("Foo baz bar", "Foo*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_None);
+
+  // *bar*baz should match bar baz
+  result = VkQualityMatching::StringMatches("bar baz", "*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_Substring);
+
+  // *bar*baz should NOT match baz bar
+  result = VkQualityMatching::StringMatches("baz bar", "*bar*baz");
+  EXPECT_EQ(result, VkQualityMatching::kStringMatch_None);
+}
+
 // VkQUalityPredictionFile ParseFileData tests
 static constexpr uint32_t kTooSmallBuffer[4] {0, 0, 0, 0};
 
@@ -348,6 +366,15 @@ TEST(VkQualityFileParseSizeCheck, Validity)
   VkQualityPredictionFile file;
   void *ptr = (void*)kTooSmallBuffer;
   const auto result = file.ParseFileData(ptr, sizeof(kTooSmallBuffer),
+                                         kValidVersion);
+  EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_TooSmall);
+}
+
+TEST(VkQualityFileParseLargeFileSizeCheck, Validity)
+{
+  VkQualityPredictionFile file;
+  MemoryBuffer memory_buffer(1024 * 1024 + 1); // 1 MB + 1 byte
+  const auto result = file.ParseFileData(memory_buffer.GetPtr(), memory_buffer.GetTotalSize(),
                                          kValidVersion);
   EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_TooSmall);
 }
@@ -576,12 +603,20 @@ TEST(VkQualityFileParseHeaderOffsetTables, Validity)
   uint32_t old_offset;
 
   uint32_t *string_offsets = reinterpret_cast<uint32_t *>((base + header->string_table_offset));
-  old_offset = *string_offsets;
-  *string_offsets = 0x7FFFFFFF;
+  old_offset = string_offsets[0];
+  string_offsets[0] = 0x7FFFFFFF;
   auto result = file.ParseFileData(memory_buffer.GetPtr(), memory_buffer.GetUsedSize(),
                                    kValidVersion);
   EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_StringOffsetOverflow);
-  *string_offsets = old_offset;
+  string_offsets[0] = old_offset;
+
+  // Corrupt a higher offset that would not be checked if device_list_count was used instead of string_table_count
+  old_offset = string_offsets[4];
+  string_offsets[4] = 0x7FFFFFFF;
+  result = file.ParseFileData(memory_buffer.GetPtr(), memory_buffer.GetUsedSize(),
+                               kValidVersion);
+  EXPECT_EQ(result, VkQualityPredictionFile::kFileParseResult_Error_StringOffsetOverflow);
+  string_offsets[4] = old_offset;
 }
 
 TEST(VkQualityStringComparison, Validity)
@@ -624,6 +659,7 @@ TEST(VkQualityDeviceMatchTests, Validity)
     "genericvendor",
     "genericfingerprint",
     30,
+    0x7e80301,
     VK_API_VERSION_1_1,
     0x3330000,
     0x10000,
@@ -705,6 +741,7 @@ TEST(VkQualityGpuTests, Validity)
       "genericvendor",
       "genericfingerprint",
       30,
+      0x7e80301,
       VK_API_VERSION_1_1,
       0x3330000,
       0x10000,
@@ -850,6 +887,7 @@ TEST(VkQualityRecommendationTests, Validity) {
       "genericvendor",
       "genericfingerprint",
       kDefaultMinAndroidApi,
+      0x7e80301,
       VK_API_VERSION_1_3,
       0x111,
       kFakeGpuVendor_Google_MinDriverVersion,
@@ -886,6 +924,7 @@ TEST(VkQualityRecommendationTests, Validity) {
       "genericvendor",
       "genericfingerprint",
       kDefaultMinAndroidApi + 1,
+      0x7e80301,
       VK_API_VERSION_1_3,
       0x111,
       kFakeGpuVendor_Google_MinDriverVersion,
@@ -904,6 +943,7 @@ TEST(VkQualityRecommendationTests, Validity) {
       "genericvendor",
       "genericfingerprint",
       kDefaultMinAndroidApi,
+      0x7e80301,
       VK_API_VERSION_1_3,
       0x333,
       kFakeGpuVendor_9dfx_MinDriverVersion,
@@ -931,6 +971,7 @@ TEST(VkQualityRecommendationTests, Validity) {
       "genericvendor",
       "genericfingerprint",
       kDefaultMinAndroidApi,
+      0x7e80301,
       VK_API_VERSION_1_3,
       0x222,
       kFakeGpuVendor_ZMistake_MinDriverVersion,
@@ -968,6 +1009,7 @@ TEST(VkQualityFingerprintTests, Validity) {
       "genericvendor",
       "zzzFingerprintCGood",
       kDefaultMinAndroidApi,
+      0x7e80301,
       VK_API_VERSION_1_3,
       0x111,
       kFakeGpuVendor_Google_MinDriverVersion,
@@ -991,6 +1033,7 @@ TEST(VkQualityFingerprintTests, Validity) {
       "genericvendor",
       "zzzFingerprintABad",
       kDefaultMinAndroidApi,
+      0x7e80301,
       VK_API_VERSION_1_3,
       0x111,
       kFakeGpuVendor_Google_MinDriverVersion,

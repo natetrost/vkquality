@@ -29,6 +29,7 @@
 #include "vulkan_util.h"
 
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+//#define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOG_TAG "VKQUALITY"
 
 extern "C" uint32_t VkQuality_getVersion();
@@ -39,6 +40,9 @@ constexpr const char *kCacheFilename = "vkqcache.bin";
 
 // Build.SOC_MODEL requires API 31 or higher
 constexpr const int kMinSoCAPI = 31;
+
+// Minimum Vulkan dEQP version required for quality
+constexpr const int32_t kMinVkDeqp = 0x7e80301;
 
 // Device info class and field name constants for Android
 constexpr const char *kAndroidBuildClass = "android/os/Build";
@@ -127,8 +131,137 @@ std::string VkQualityManager::GetStaticStringField(JNIEnv *env, jclass clz,
   return ret_value;
 }
 
+int32_t VkQualityManager::GetVulkanDEQPLevel(JNIEnv *env) {
+  int32_t deqp_level = 0;
+
+  jclass activity_thread_clz = env->FindClass("android/app/ActivityThread");
+  if (activity_thread_clz == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    ALOGE("Failed to find ActivityThread class");
+    return 0;
+  }
+
+  jmethodID current_app_method = env->GetStaticMethodID(
+      activity_thread_clz, "currentApplication", "()Landroid/app/Application;");
+  if (current_app_method == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(activity_thread_clz);
+    ALOGE("Failed to get currentApplication method");
+    return 0;
+  }
+
+  jobject context = env->CallStaticObjectMethod(activity_thread_clz, current_app_method);
+  env->DeleteLocalRef(activity_thread_clz);
+  if (context == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    ALOGE("Context is null");
+    return 0;
+  }
+
+  jclass context_clz = env->FindClass("android/content/Context");
+  if (context_clz == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(context);
+    ALOGE("Failed to find Context class");
+    return 0;
+  }
+
+  jmethodID get_pm_method = env->GetMethodID(
+      context_clz, "getPackageManager", "()Landroid/content/pm/PackageManager;");
+  env->DeleteLocalRef(context_clz);
+  if (get_pm_method == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(context);
+    ALOGE("Failed to get getPackageManager method");
+    return 0;
+  }
+
+  jobject pm = env->CallObjectMethod(context, get_pm_method);
+  env->DeleteLocalRef(context);
+  if (pm == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    ALOGE("PackageManager is null");
+    return 0;
+  }
+
+  jclass pm_clz = env->FindClass("android/content/pm/PackageManager");
+  if (pm_clz == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(pm);
+    ALOGE("Failed to find PackageManager class");
+    return 0;
+  }
+
+  jmethodID get_features_method = env->GetMethodID(
+      pm_clz, "getSystemAvailableFeatures", "()[Landroid/content/pm/FeatureInfo;");
+  env->DeleteLocalRef(pm_clz);
+  if (get_features_method == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(pm);
+    ALOGE("Failed to get getSystemAvailableFeatures method");
+    return 0;
+  }
+
+  auto features = reinterpret_cast<jobjectArray>(
+      env->CallObjectMethod(pm, get_features_method));
+  env->DeleteLocalRef(pm);
+  if (features == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    ALOGE("features array is null");
+    return 0;
+  }
+
+  jsize features_len = env->GetArrayLength(features);
+  jclass feature_info_clz = env->FindClass("android/content/pm/FeatureInfo");
+  if (feature_info_clz == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(features);
+    ALOGE("Failed to find FeatureInfo class");
+    return 0;
+  }
+
+  jfieldID name_field = env->GetFieldID(feature_info_clz, "name", "Ljava/lang/String;");
+  jfieldID version_field = env->GetFieldID(feature_info_clz, "version", "I");
+  if (name_field == nullptr || version_field == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(feature_info_clz);
+    env->DeleteLocalRef(features);
+    ALOGE("Failed to get FeatureInfo name or version field");
+    return 0;
+  }
+
+  for (jsize i = 0; i < features_len; ++i) {
+    jobject feature = env->GetObjectArrayElement(features, i);
+    if (feature == nullptr) {
+      continue;
+    }
+
+    auto jname = reinterpret_cast<jstring>(env->GetObjectField(feature, name_field));
+    if (jname != nullptr) {
+      const char *name_cstr = env->GetStringUTFChars(jname, nullptr);
+      if (name_cstr != nullptr) {
+        if (strcmp(name_cstr, "android.software.vulkan.deqp.level") == 0) {
+          deqp_level = env->GetIntField(feature, version_field);
+          env->ReleaseStringUTFChars(jname, name_cstr);
+          env->DeleteLocalRef(jname);
+          env->DeleteLocalRef(feature);
+          break;
+        }
+        env->ReleaseStringUTFChars(jname, name_cstr);
+      }
+      env->DeleteLocalRef(jname);
+    }
+    env->DeleteLocalRef(feature);
+  }
+
+  env->DeleteLocalRef(feature_info_clz);
+  env->DeleteLocalRef(features);
+
+  return deqp_level;
+}
+
 vkQualityInitResult VkQualityManager::InitDeviceInfo(JNIEnv *env, DeviceInfo &device_info,
-    const vkqGraphicsAPIInfo *api_info) {
+    const vkqGraphicsAPIInfo *api_info, const int32_t flags) {
   jclass build_class = env->FindClass(kAndroidBuildClass);
   if (env->ExceptionCheck()) {
     env->ExceptionClear();
@@ -144,11 +277,15 @@ vkQualityInitResult VkQualityManager::InitDeviceInfo(JNIEnv *env, DeviceInfo &de
 
   device_info.api_level = android_get_device_api_level();
 
-  if (api_info != nullptr && api_info->gles_version_string != nullptr) {
-    device_info.gles_version = api_info->gles_version_string;
-  } else {
-    GLESUtil::GetGLESStrings(device_info.gles_renderer, device_info.gles_version,
-                             device_info.gles_vendor);
+  device_info.vk_deqp_level = GetVulkanDEQPLevel(env);
+
+  if ((flags & kInitFlagSkipFingerprintRecommendationCheck) == 0) {
+    if (api_info != nullptr && api_info->gles_version_string != nullptr) {
+      device_info.gles_version = api_info->gles_version_string;
+    } else {
+      GLESUtil::GetGLESStrings(device_info.gles_renderer, device_info.gles_version,
+                               device_info.gles_vendor);
+    }
   }
 
   // SoC string will be empty if we can't retrieve it due to older Android version
@@ -284,7 +421,7 @@ vkQualityInitResult VkQualityManager::StartRecommendation() {
   }
 
   DeviceInfo device_info;
-  vkQualityInitResult result = InitDeviceInfo(env_, device_info, api_info_);
+  vkQualityInitResult result = InitDeviceInfo(env_, device_info, api_info_, flags_);
   if (result != kSuccess) {
     return result;
   }
@@ -351,8 +488,8 @@ vkQualityInitResult VkQualityManager::StartRecommendation() {
             // Recommend Vulkan on unrecognized devices when ANGLE is the GLES driver
             quality_recommendation_ = kRecommendationVulkanBecausePredictionMatch;
           } else if (quality_recommendation_ == kRecommendationGLESBecauseNoDeviceMatch &&
-                     device_info.api_level >= prediction_file_.GetFutureAndroidAPILevel()) {
-            quality_recommendation_ = kRecommendationVulkanBecauseFutureAndroid;
+              device_info.vk_deqp_level >= kMinVkDeqp) {
+            quality_recommendation_ = kRecommendationVulkanBecausePredictionMatch;
           }
           cache_list_version_ = prediction_file_.GetListVersion();
           SaveCache(device_info);

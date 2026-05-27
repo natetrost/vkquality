@@ -22,11 +22,12 @@ namespace vkquality {
 
 static constexpr size_t kMaxWildcards = 4;
 
-size_t VkQualityMatching::CountWildcards(const char *str, size_t *string_length,
+size_t VkQualityMatching::CountWildcards(const std::string_view &str, size_t *string_length,
                                          size_t *offset_array) {
   size_t offset = 0;
   size_t wildcard_count = 0;
-  while (str[offset] != '\0') {
+  const size_t str_len = str.length();
+  while (offset < str_len) {
     if (str[offset] == '*' && wildcard_count < kMaxWildcards) {
       offset_array[wildcard_count++] = offset;
     }
@@ -40,34 +41,37 @@ VkQualityMatching::StringMatchResult VkQualityMatching::WildcardsMatch(
     const std::string_view &a, const std::string_view &b,
     const size_t wildcard_count, const size_t wildcard_length,
     const size_t *wildcard_offsets) {
-  std::vector<char> temp_string;
-  temp_string.reserve(wildcard_length + 1);
-  char *substring = temp_string.data();
+  size_t pos = 0;
 
-  size_t current_index = 0;
-  size_t substring_index = 0;
   // If the compare string doesn't start with a wildcard, the input string must start with
   // the prefix chars before the first '*' in the compare string
-  if (b[current_index] != '*') {
-    while(current_index < wildcard_length && b[current_index] != '*') {
-      substring[substring_index++] = b[current_index++];
-    }
-    substring[substring_index] = '\0';
-    if (strstr(a.data(), substring) != a.data())
+  if (b[0] != '*') {
+    const size_t first_star_offset = wildcard_offsets[0];
+    std::string_view prefix = b.substr(0, first_star_offset);
+    if (a.length() < prefix.length() || a.substr(0, prefix.length()) != prefix) {
       return VkQualityMatching::kStringMatch_None;
+    }
+    pos = prefix.length();
   }
-  // current_index is now at a wildcard, process each substring in turn
-  size_t finished_wildcards = 0;
-  while (finished_wildcards < wildcard_count) {
-    substring_index = 0;
-    ++current_index; // past '*'
-    while(current_index < wildcard_length && b[current_index] != '*') {
-      substring[substring_index++] = b[current_index++];
+
+  // Process each substring in turn
+  for (size_t i = 0; i < wildcard_count; ++i) {
+    const size_t current_star = wildcard_offsets[i];
+    size_t segment_len = 0;
+    if (i + 1 < wildcard_count) {
+      segment_len = wildcard_offsets[i + 1] - (current_star + 1);
+    } else {
+      segment_len = wildcard_length - (current_star + 1);
     }
-    substring[substring_index] = '\0';
-    if (strstr(a.data(), substring) == nullptr)
-      return VkQualityMatching::kStringMatch_None;
-    ++finished_wildcards;
+
+    std::string_view segment = b.substr(current_star + 1, segment_len);
+    if (!segment.empty()) {
+      size_t found = a.find(segment, pos);
+      if (found == std::string_view::npos) {
+        return VkQualityMatching::kStringMatch_None;
+      }
+      pos = found + segment.length();
+    }
   }
 
   return VkQualityMatching::kStringMatch_Substring;
@@ -90,21 +94,21 @@ VkQualityMatching::StringMatchResult VkQualityMatching::StringMatches(
   // *bar*baz = match if A contains 'bar' and 'baz'
   size_t wildcard_length = 0;
   size_t wildcard_offsets[kMaxWildcards];
-  size_t wildcard_count = CountWildcards(b.data(), &wildcard_length, wildcard_offsets);
+  size_t wildcard_count = CountWildcards(b, &wildcard_length, wildcard_offsets);
   if (wildcard_count > 1 || (wildcard_count == 1 && b[0] != '*')) {
     return WildcardsMatch(a, b, wildcard_count, wildcard_length, wildcard_offsets);
   }
 
   if (b[0] == '^' && b_length > 1) {
     // Substring match at start of string
-    const char *compare = b.data() + 1;
-    if (strstr(a.data(), compare) == a.data()) {
+    std::string_view pattern = b.substr(1);
+    if (a.length() >= pattern.length() && a.substr(0, pattern.length()) == pattern) {
       return kStringMatch_Substring_Start;
     }
   } else if (b[0] == '*' && b_length > 1) {
     // Substring match anywhere in string
-    const char *compare = b.data() + 1;
-    if (strstr(a.data(), compare) != nullptr) {
+    std::string_view pattern = b.substr(1);
+    if (a.find(pattern) != std::string_view::npos) {
       return kStringMatch_Substring;
     }
   } else {

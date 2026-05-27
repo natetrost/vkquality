@@ -64,6 +64,14 @@ VkQualityPredictionFile::FileParseResult VkQualityPredictionFile::ValidateFile(
     void *file_data, const size_t file_size, const uint32_t library_version) {
   const VkQualityFileHeader *header = reinterpret_cast<const VkQualityFileHeader *>(file_data);
 
+  // Guard against integer overflow by assuming a valid file will be under a megabyte in size
+  static constexpr size_t kMaxValidFileSize = 1024 * 1024; // 1 megabyte
+  if (file_size > kMaxValidFileSize) {
+    file_parse_error_ = str_fmt("File size (%d) exceeds maximum allowed size of %d bytes",
+                                (int)file_size, (int)kMaxValidFileSize);
+    return kFileParseResult_Error_TooSmall;
+  }
+
   // File must be at least the size of the header
   if (file_size < sizeof(VkQualityFileHeader)) {
     file_parse_error_ = str_fmt("File size (%d) smaller than header size: %d",
@@ -80,80 +88,144 @@ VkQualityPredictionFile::FileParseResult VkQualityPredictionFile::ValidateFile(
     return kFileParseResult_Error_LibraryTooOldForFile;
   }
 
+  // 1. Device list validation
+  if (header->device_list_offset > file_size) {
+    file_parse_error_ = "Invalid file: Device list offset exceeds file size";
+    return kFileParseResult_Error_DeviceListOverflow;
+  }
+  if (header->device_list_count > file_size / sizeof(VkQualityDeviceAllowListEntry)) {
+    file_parse_error_ = "Invalid file: Device list count exceeds maximum possible count";
+    return kFileParseResult_Error_DeviceListOverflow;
+  }
   const size_t device_list_size = header->device_list_count * sizeof(VkQualityDeviceAllowListEntry);
-  const size_t device_list_end = header->device_list_offset + device_list_size;
-  if (device_list_end > file_size) {
+  if (device_list_size > file_size - header->device_list_offset) {
     file_parse_error_ = "Invalid file: Device list overflows end of file";
     return kFileParseResult_Error_DeviceListOverflow;
   }
 
-  const size_t driver_allow_list_size = header->driver_allow_count *
-      sizeof(VkQualityDriverFingerprintEntry);
-  const size_t driver_allow_list_end = header->driver_allow_offset + driver_allow_list_size;
-  if (driver_allow_list_end > file_size) {
+  // 2. Driver allow list validation
+  if (header->driver_allow_offset > file_size) {
+    file_parse_error_ = "Invalid file: driver allow list offset exceeds file size";
+    return kFileParseResult_Error_DriverAllowOverflow;
+  }
+  if (header->driver_allow_count > file_size / sizeof(VkQualityDriverFingerprintEntry)) {
+    file_parse_error_ = "Invalid file: driver allow list count exceeds maximum possible count";
+    return kFileParseResult_Error_DriverAllowOverflow;
+  }
+  const size_t driver_allow_list_size = header->driver_allow_count * sizeof(VkQualityDriverFingerprintEntry);
+  if (driver_allow_list_size > file_size - header->driver_allow_offset) {
     file_parse_error_ = "Invalid file: driver allow list overflows end of file";
     return kFileParseResult_Error_DriverAllowOverflow;
   }
 
-  const size_t driver_deny_list_size = header->driver_deny_count *
-      sizeof(VkQualityDriverFingerprintEntry);
-  const size_t driver_deny_list_end = header->driver_deny_offset + driver_deny_list_size;
-  if (driver_deny_list_end > file_size) {
+  // 3. Driver deny list validation
+  if (header->driver_deny_offset > file_size) {
+    file_parse_error_ = "Invalid file: driver deny list offset exceeds file size";
+    return kFileParseResult_Error_DriverDenyOverflow;
+  }
+  if (header->driver_deny_count > file_size / sizeof(VkQualityDriverFingerprintEntry)) {
+    file_parse_error_ = "Invalid file: driver deny list count exceeds maximum possible count";
+    return kFileParseResult_Error_DriverDenyOverflow;
+  }
+  const size_t driver_deny_list_size = header->driver_deny_count * sizeof(VkQualityDriverFingerprintEntry);
+  if (driver_deny_list_size > file_size - header->driver_deny_offset) {
     file_parse_error_ = "Invalid file: driver deny list overflows end of file";
     return kFileParseResult_Error_DriverDenyOverflow;
   }
 
-  const size_t gpu_allow_list_size = header->gpu_allow_predict_count *
-                                     sizeof(VkQualityGpuPredictEntry);
-  const size_t gpu_allow_list_end = header->gpu_allow_predict_offset + gpu_allow_list_size;
-  if (gpu_allow_list_end > file_size) {
+  // 4. GPU allow list validation
+  if (header->gpu_allow_predict_offset > file_size) {
+    file_parse_error_ = "Invalid file: GPU allow list offset exceeds file size";
+    return kFileParseResult_Error_GpuAllowOverflow;
+  }
+  if (header->gpu_allow_predict_count > file_size / sizeof(VkQualityGpuPredictEntry)) {
+    file_parse_error_ = "Invalid file: GPU allow list count exceeds maximum possible count";
+    return kFileParseResult_Error_GpuAllowOverflow;
+  }
+  const size_t gpu_allow_list_size = header->gpu_allow_predict_count * sizeof(VkQualityGpuPredictEntry);
+  if (gpu_allow_list_size > file_size - header->gpu_allow_predict_offset) {
     file_parse_error_ = "Invalid file: GPU allow list overflows end of file";
     return kFileParseResult_Error_GpuAllowOverflow;
   }
 
-  const size_t gpu_deny_list_size = header->gpu_deny_predict_count *
-                                    sizeof(VkQualityGpuPredictEntry);
-  const size_t gpu_deny_list_end = header->gpu_deny_predict_offset + gpu_deny_list_size;
-  if (gpu_deny_list_end > file_size) {
+  // 5. GPU deny list validation
+  if (header->gpu_deny_predict_offset > file_size) {
+    file_parse_error_ = "Invalid file: GPU deny list offset exceeds file size";
+    return kFileParseResult_Error_GpuDenyOverflow;
+  }
+  if (header->gpu_deny_predict_count > file_size / sizeof(VkQualityGpuPredictEntry)) {
+    file_parse_error_ = "Invalid file: GPU deny list count exceeds maximum possible count";
+    return kFileParseResult_Error_GpuDenyOverflow;
+  }
+  const size_t gpu_deny_list_size = header->gpu_deny_predict_count * sizeof(VkQualityGpuPredictEntry);
+  if (gpu_deny_list_size > file_size - header->gpu_deny_predict_offset) {
     file_parse_error_ = "Invalid file: GPU deny list overflows end of file";
     return kFileParseResult_Error_GpuDenyOverflow;
   }
 
-  const size_t soc_allow_list_size = header->soc_allow_count *
-      sizeof(VkQualityDriverSoCEntry);
-  const size_t soc_allow_list_end = header->soc_allow_offset + soc_allow_list_size;
-  if (soc_allow_list_end > file_size) {
+  // 6. SoC allow list validation
+  if (header->soc_allow_offset > file_size) {
+    file_parse_error_ = "Invalid file: SoC allow list offset exceeds file size";
+    return kFileParseResult_Error_SoCAllowOverflow;
+  }
+  if (header->soc_allow_count > file_size / sizeof(VkQualityDriverSoCEntry)) {
+    file_parse_error_ = "Invalid file: SoC allow list count exceeds maximum possible count";
+    return kFileParseResult_Error_SoCAllowOverflow;
+  }
+  const size_t soc_allow_list_size = header->soc_allow_count * sizeof(VkQualityDriverSoCEntry);
+  if (soc_allow_list_size > file_size - header->soc_allow_offset) {
     file_parse_error_ = "Invalid file: SoC allow list overflows end of file";
     return kFileParseResult_Error_SoCAllowOverflow;
   }
 
-  const size_t soc_deny_list_size = header->soc_deny_count *
-      sizeof(VkQualityDriverSoCEntry);
-  const size_t soc_deny_list_end = header->soc_deny_offset + soc_deny_list_size;
-  if (soc_deny_list_end > file_size) {
+  // 7. SoC deny list validation
+  if (header->soc_deny_offset > file_size) {
+    file_parse_error_ = "Invalid file: SoC deny list offset exceeds file size";
+    return kFileParseResult_Error_SoCDenyOverflow;
+  }
+  if (header->soc_deny_count > file_size / sizeof(VkQualityDriverSoCEntry)) {
+    file_parse_error_ = "Invalid file: SoC deny list count exceeds maximum possible count";
+    return kFileParseResult_Error_SoCDenyOverflow;
+  }
+  const size_t soc_deny_list_size = header->soc_deny_count * sizeof(VkQualityDriverSoCEntry);
+  if (soc_deny_list_size > file_size - header->soc_deny_offset) {
     file_parse_error_ = "Invalid file: soc deny list overflows end of file";
     return kFileParseResult_Error_SoCDenyOverflow;
   }
 
-  // Individual string offset bounds checks are made at string retrieval time, we just make
-  // sure the actual string offset list is within the file bounds here.
+  // 8. String offset list validation
+  if (header->string_table_offset > file_size) {
+    file_parse_error_ = "Invalid file: string table offset exceeds file size";
+    return kFileParseResult_Error_StringOffsetOverflow;
+  }
+  if (header->string_table_count > file_size / sizeof(uint32_t)) {
+    file_parse_error_ = "Invalid file: string table count exceeds maximum possible count";
+    return kFileParseResult_Error_StringOffsetOverflow;
+  }
   const size_t string_offset_list_size = header->string_table_count * sizeof(uint32_t);
-  const size_t string_offset_list_end = header->string_table_offset + string_offset_list_size;
-  if (string_offset_list_end > file_size) {
+  if (string_offset_list_size > file_size - header->string_table_offset) {
     file_parse_error_ = "Invalid file: string table offset list overflows end of file";
     return kFileParseResult_Error_StringOffsetOverflow;
   }
   const uint8_t *file_start = reinterpret_cast<const uint8_t *>(file_data);
   const uint32_t *string_offsets = reinterpret_cast<const uint32_t *>(
       (file_start + header->string_table_offset));
-  if (!CheckOffsetListValidity(string_offsets, header->device_list_count, file_size)) {
+  if (!CheckOffsetListValidity(string_offsets, header->string_table_count, file_size)) {
     file_parse_error_ = "Invalid file: String offset table entry overflows end of file";
     return kFileParseResult_Error_StringOffsetOverflow;
   }
 
+  // 9. Shortcut offset list validation
+  if (header->device_list_shortcuts_offset > file_size) {
+    file_parse_error_ = "Invalid file: shortcut offset list offset exceeds file size";
+    return kFileParseResult_Error_ShortcutOverflow;
+  }
+  if (VkQualityPredictionFile::kShortcut_Offset_Count > file_size / sizeof(uint32_t)) {
+    file_parse_error_ = "Invalid file: shortcut offset list count exceeds maximum possible count";
+    return kFileParseResult_Error_ShortcutOverflow;
+  }
   const size_t shortcut_offset_list_size = VkQualityPredictionFile::kShortcut_Offset_Count * sizeof(uint32_t);
-  const size_t shortcut_offset_list_end = header->device_list_shortcuts_offset + shortcut_offset_list_size;
-  if (shortcut_offset_list_end > file_size) {
+  if (shortcut_offset_list_size > file_size - header->device_list_shortcuts_offset) {
     file_parse_error_ = "Invalid file: shortcut offset list overflows end of file";
     return kFileParseResult_Error_ShortcutOverflow;
   }
